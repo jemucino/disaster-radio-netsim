@@ -10,13 +10,14 @@ import networkx as nx
 py.init_notebook_mode(connected=True)
 
 
-class State():
+class Node():
     STATES = ['rx','delay','tx','idle','fault']
 
-    def __init__(self, delay_factor_randomize):
+    def __init__(self, config):
+        self.config = config
+
         self.state = 'idle'
         self.delay_factor = 1
-        self.delay_factor_randomize = delay_factor_randomize
 
         # keep track of how many nodes are trying to talk to us
         self.active_message_count = 0
@@ -44,7 +45,7 @@ class State():
 
     def transmit(self, msg, neighbors, time_step=1):
         if self.state == 'tx' or (self.state == 'delay' and self.delay_timer <= 0):
-            self.set_delay_factor(self.delay_factor_randomize)
+            self.__set_delay_factor()
             if self.tx_timer > 0:
                 for neighbor in neighbors:
                     neighbor.new_message()
@@ -76,7 +77,7 @@ class State():
                 elif self.active_message_count == 0: # this is a problem if consecutive messages but no overlap
                     if msg['id'] not in self.msg_history:
                         self.tx_timer = msg['length']
-                        self.set_delay_factor(self.delay_factor_randomize)
+                        self.__set_delay_factor()
                         self.delay_timer = self.delay_factor*msg['length'] - time_step
                         self.msg_history.add(msg['id'])
                         next_state = 'delay'
@@ -95,11 +96,11 @@ class State():
                 # raise ValueError('At least one node is in an unexpected state.')
                 print('A node was in an unexpected state: {}'.format(self.state))
 
-    def set_delay_factor(self, randomize=None):
-        if randomize:
-            self.delay_factor = uniform(randomize['delay_factor_min'], randomize['delay_factor_max'])
+    def __set_delay_factor(self):
+        if self.config['delay_factor_randomize']:
+            self.delay_factor = uniform(self.config['delay_factor_min'], self.config['delay_factor_max'])
         else:
-            self.delay_factor = 1
+            self.delay_factor = self.config['delay_factor_constant']
 
 
 class NetSim():
@@ -130,8 +131,8 @@ class NetSim():
 
     def run_sim(self):
         # Begin tranmission on starting node
-        neighbors = [self.network.node[node]['state'] for node in nx.all_neighbors(self.network,self.starting_node)]
-        self.network.node[self.starting_node]['state'].tx_begin(self.message, neighbors)
+        neighbors = [self.network.node[node]['node_obj'] for node in nx.all_neighbors(self.network,self.starting_node)]
+        self.network.node[self.starting_node]['node_obj'].tx_begin(self.message, neighbors)
 
         # Only need to define the edges once
         self.edge_trace = draw_edges(self.network)
@@ -154,17 +155,17 @@ class NetSim():
     def __step_sim(self):
         # Iterate over all nodes and transmit
         for node in self.network.nodes():
-            neighbors = [self.network.node[node_]['state'] for node_ in nx.all_neighbors(self.network,node)]
-            self.network.node[node]['state'].transmit(self.message, neighbors, self.time_step)
+            neighbors = [self.network.node[node_]['node_obj'] for node_ in nx.all_neighbors(self.network,node)]
+            self.network.node[node]['node_obj'].transmit(self.message, neighbors, self.time_step)
 
         # Iterate over all nodes and perform transitions
         for node in self.network.nodes():
-            neighbors = [self.network.node[node_]['state'] for node_ in nx.all_neighbors(self.network,node)]
-            self.network.node[node]['state'].activate(self.message, neighbors, self.time_step)
+            neighbors = [self.network.node[node_]['node_obj'] for node_ in nx.all_neighbors(self.network,node)]
+            self.network.node[node]['node_obj'].activate(self.message, neighbors, self.time_step)
 
         # Cleanup for next iteration
         for node in self.network.nodes():
-            self.network.node[node]['state'].clear_messages()
+            self.network.node[node]['node_obj'].clear_messages()
 
         # Move the simulation time forward
         self.__increment_time()
@@ -192,10 +193,10 @@ def create_graph(time_step, config):
             ncenter=n
             dmin=d
 
-    # Add state attribute to each node TODO: add more parameters to State
-    delay_factor_randomize = config['delay_factor_randomize'] if config['delay_factor_randomize'] else None
+    # Add Node object to each node
+    node_config = config['node_config']
     for node in G.nodes():
-        G.node[node]['state'] = State(delay_factor_randomize)
+        G.node[node]['node_obj'] = Node(node_config)
 
     return G, ncenter
 
@@ -252,8 +253,8 @@ def draw_nodes(G):
 
     # Color node points by the number of connections.
     for node in G:
-        node_trace['marker']['color'].append(color[G.node[node]['state'].state])
-        node_info = 'State: {}'.format(G.node[node]['state'].state)
+        node_trace['marker']['color'].append(color[G.node[node]['node_obj'].state])
+        node_info = 'State: {}'.format(G.node[node]['node_obj'].state)
         node_trace['text'].append(node_info)
 
     return node_trace
@@ -320,10 +321,11 @@ if __name__ == '__main__':
               'time_step': 0.1,
               'max_steps': 100,
               'messages': [{'id': 0, 'origin': 'center', 'length': 0.2}],  # length in seconds
-              'delay_factor_constant': 1,
-              'delay_factor_randomize': {'delay_factor_min': 0.1,
-                                         'delay_factor_max': 5.0,
-                                         },
+              'node_config': {'delay_factor_constant': 1,
+                              'delay_factor_randomize': False,
+                              'delay_factor_min': 0.1,
+                              'delay_factor_max': 5.0,
+                              },
               }
 
     sim = NetSim(config)
