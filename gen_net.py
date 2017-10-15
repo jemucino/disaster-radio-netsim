@@ -50,14 +50,6 @@ class State():
         elif self.state =='delay':
             self.delay_timer -= time_step
 
-    # def delay(self, msg, neighbors, time_step=1):
-    #     if self.delay_timer > 0:
-    #         self.delay_timer -= time_step
-    #     else:
-    #         # self.state = 'tx'
-    #         # self.tx(msg, neighbors, time_step)
-    #         next_State = 'tx'
-
     def activate(self, msg, neighbors, time_step=1):
         next_state = None
         while next_state != self.state:
@@ -101,7 +93,7 @@ class State():
 
 class NetSim():
 
-    def __init__(self):
+    def __init__(self, size):
         # Initialize simulation
         # TODO: make config file or dict
         self.time_step = 0.1
@@ -111,13 +103,15 @@ class NetSim():
         self.delay_factor = 1 # seconds TODO: randomize or calculate
 
         # Create the graph
-        self.network, self.starting_node = create_graph(self.time_step)
+        self.network, self.starting_node = create_graph(self.time_step, size)
 
         # # Map nodes to connected neighbors
         # self.neighbors = {node: [neighbor for neighbor in nx.all_neighbors(self.network,node)] for node in self.network.nodes()}
 
         # Initialize time
         self.time = 0
+
+        self.movie = Movie()
 
     def run_sim(self):
         # Begin tranmission on starting node
@@ -135,12 +129,12 @@ class NetSim():
             N = 1
             if ii % 1 == 0:
                 self.node_trace = draw_nodes(self.network)
-                plot_graph(self.edge_trace, self.node_trace)
+                self.movie.add_data(self.edge_trace, self.node_trace)
 
         # Draw the nodes at the end of the simulation
         print("The simulation ended at t = {}".format(self.time))
         self.node_trace = draw_nodes(self.network)
-        plot_graph(self.edge_trace, self.node_trace)
+        self.movie.add_data(self.edge_trace, self.node_trace)
 
     def __step_sim(self):
         # Iterate over all nodes and transmit
@@ -245,26 +239,42 @@ def draw_nodes(G):
     return node_trace
 
 
-def plot_graph(edge_trace, node_trace):
-    # Create the graph
-    fig = Figure(data=Data([edge_trace, node_trace]),
-                 layout=Layout(
-                    title='<br>Network graph made with Python',
-                    titlefont=dict(size=16),
-                    showlegend=False,
-                    hovermode='closest',
-                    margin=dict(b=20,l=5,r=5,t=40),
-                    annotations=[ dict(
-                        text="Python code: <a href='https://plot.ly/ipython-notebooks/network-graphs/'> https://plot.ly/ipython-notebooks/network-graphs/</a>",
-                        showarrow=False,
-                        xref="paper", yref="paper",
-                        x=0.005, y=-0.002 ) ],
-                    xaxis=XAxis(showgrid=False, zeroline=False, showticklabels=False),
-                    yaxis=YAxis(showgrid=False, zeroline=False, showticklabels=False)))
+class Movie():
 
-    py.iplot(fig, filename='networkx')
+    def __init__(self):
+        self.data = []
+
+    def add_data(self, edge_trace, node_trace):
+        self.data.append({'data': Data([edge_trace, node_trace])})
+
+    def play(self):
+        # Create the graph
+        fig = Figure(data=self.data[0]['data'],
+                     layout=Layout(title='<br>Network graph made with Python',
+                                   titlefont=dict(size=16),
+                                   showlegend=False,
+                                   hovermode='closest',
+                                   margin=dict(b=20,l=5,r=5,t=40),
+                                   # annotations=[ dict(
+                                   #     text="Python code: <a href='https://plot.ly/ipython-notebooks/network-graphs/'> https://plot.ly/ipython-notebooks/network-graphs/</a>",
+                                   #     showarrow=False,
+                                   #     xref="paper", yref="paper",
+                                   #     x=0.005, y=-0.002 ) ],
+                                   updatemenus= [{'type': 'buttons',
+                                                  'buttons': [{'label': 'Play','method': 'animate','args': [None]}]
+                                                  }],
+                                   xaxis=XAxis(showgrid=False, zeroline=False, showticklabels=False),
+                                   yaxis=YAxis(showgrid=False, zeroline=False, showticklabels=False),
+                                   ),
+                        frames=self.data,
+                        )
+
+        py.plot(fig, filename='networkx')
 
 
 if __name__ == '__main__':
-    sim = NetSim()
+    sim = NetSim(200)
     sim.run_sim()
+    sim.movie.play()
+# for datum in sim.movie.data:
+#     print(datum)
