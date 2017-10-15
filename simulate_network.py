@@ -96,6 +96,8 @@ class Node():
                 # raise ValueError('At least one node is in an unexpected state.')
                 print('A node was in an unexpected state: {}'.format(self.state))
 
+        return self.state
+
     def __set_delay_factor(self):
         if self.config['delay_factor_randomize']:
             self.delay_factor = uniform(self.config['delay_factor_min'], self.config['delay_factor_max'])
@@ -129,7 +131,7 @@ class NetSim():
         # Instantiate a visualization object for the simulation
         self.vis = Visualizer()
 
-    def run_sim(self):
+    def run_sim(self, decimation=1):
         # Begin tranmission on starting node
         neighbors = [self.network.node[node]['node_obj'] for node in nx.all_neighbors(self.network,self.starting_node)]
         self.network.node[self.starting_node]['node_obj'].tx_begin(self.message, neighbors)
@@ -139,20 +141,26 @@ class NetSim():
 
         # Simulate the network
         for ii in range(self.max_steps):
-            self.__step_sim()
+            active_node_count = self.__step_sim()
 
-            # Draw the nodes every N steps (useful for long duration runs)
-            N = 1
-            if ii % 1 == 0:
+            # If no nodes are active, terminate
+            if active_node_count == 0:
+                break
+
+            # Draw the nodes every decimation number of steps (useful for long runs)
+            if ii % decimation == 0:
                 self.node_trace = draw_nodes(self.network)
-                self.vis.add_data(self.edge_trace, self.node_trace)
+                self.vis.add_data(self.edge_trace, self.node_trace, {'step_no': ii})
+
+        metrics = self.analyze_network(ii, self.message)
 
         # Draw the nodes at the end of the simulation
-        print("The simulation ended at t = {}".format(self.time))
         self.node_trace = draw_nodes(self.network)
-        self.vis.add_data(self.edge_trace, self.node_trace)
+        self.vis.add_data(self.edge_trace, self.node_trace, metrics)
 
     def __step_sim(self):
+        active_node_count = 0
+
         # Iterate over all nodes and transmit
         for node in self.network.nodes():
             neighbors = [self.network.node[node_]['node_obj'] for node_ in nx.all_neighbors(self.network,node)]
@@ -161,7 +169,10 @@ class NetSim():
         # Iterate over all nodes and perform transitions
         for node in self.network.nodes():
             neighbors = [self.network.node[node_]['node_obj'] for node_ in nx.all_neighbors(self.network,node)]
-            self.network.node[node]['node_obj'].activate(self.message, neighbors, self.time_step)
+            state = self.network.node[node]['node_obj'].activate(self.message, neighbors, self.time_step)
+
+            if state in ['delay','tx']:
+                active_node_count += 1
 
         # Cleanup for next iteration
         for node in self.network.nodes():
@@ -169,6 +180,21 @@ class NetSim():
 
         # Move the simulation time forward
         self.__increment_time()
+
+        return active_node_count
+
+    def analyze_network(self, step_no, msg):
+        nodes_reached = 0
+        for node in self.network.nodes():
+            if msg['id'] in self.network.node[node]['node_obj'].msg_history:
+                nodes_reached += 1
+
+        metrics = {'step_no': step_no,
+                   'nodes_reached': nodes_reached,
+                   'percent_reached': nodes_reached/config['network_size']*100,
+                   }
+
+        return metrics
 
     def __increment_time(self):
         self.time += self.time_step
@@ -265,8 +291,26 @@ class Visualizer():
     def __init__(self):
         self.data = []
 
-    def add_data(self, edge_trace, node_trace):
-        self.data.append({'data': Data([edge_trace, node_trace])})
+    def add_data(self, edge_trace, node_trace, metrics):
+        title = '<br>Message propagation through network<br>(Step No. {})'.format(metrics['step_no'])
+
+
+        if 'nodes_reached' in metrics and 'percent_reached' in metrics:
+            text="The message reached {} nodes ({}% of the network)".format(metrics['nodes_reached'], metrics['percent_reached'])
+        else:
+            text="Running..."
+
+        annotations = Annotations([Annotation(text=text,
+                                              #  text="Python code: <a href='https://plot.ly/ipython-notebooks/network-graphs/'> https://plot.ly/ipython-notebooks/network-graphs/</a>",
+                                              showarrow=False,
+                                              xref='paper', yref='paper',
+                                              x=0.005, y=-0.002
+                                              )
+                                  ])
+
+        self.data.append({'data': Data([edge_trace, node_trace]),
+                          'layout': Layout(title=title, annotations=annotations),
+                          })
 
     def view_stills(self):
         for datum in self.data:
@@ -277,11 +321,11 @@ class Visualizer():
                                        showlegend=False,
                                        hovermode='closest',
                                        margin=dict(b=20,l=5,r=5,t=40),
-                                       # annotations=[ dict(
-                                       #     text="Python code: <a href='https://plot.ly/ipython-notebooks/network-graphs/'> https://plot.ly/ipython-notebooks/network-graphs/</a>",
-                                       #     showarrow=False,
-                                       #     xref="paper", yref="paper",
-                                       #     x=0.005, y=-0.002 ) ],
+                                       annotations=[dict(text="Running...",
+                                        #    text="Python code: <a href='https://plot.ly/ipython-notebooks/network-graphs/'> https://plot.ly/ipython-notebooks/network-graphs/</a>",
+                                           showarrow=False,
+                                           xref="paper", yref="paper",
+                                           x=0.005, y=-0.002 )],
                                        xaxis=XAxis(showgrid=False, zeroline=False, showticklabels=False),
                                        yaxis=YAxis(showgrid=False, zeroline=False, showticklabels=False),
                                        ),
@@ -297,11 +341,11 @@ class Visualizer():
                                    showlegend=False,
                                    hovermode='closest',
                                    margin=dict(b=20,l=5,r=5,t=40),
-                                   # annotations=[ dict(
-                                   #     text="Python code: <a href='https://plot.ly/ipython-notebooks/network-graphs/'> https://plot.ly/ipython-notebooks/network-graphs/</a>",
-                                   #     showarrow=False,
-                                   #     xref="paper", yref="paper",
-                                   #     x=0.005, y=-0.002 ) ],
+                                   annotations=[dict(text="Running...",
+                                    #    text="Python code: <a href='https://plot.ly/ipython-notebooks/network-graphs/'> https://plot.ly/ipython-notebooks/network-graphs/</a>",
+                                       showarrow=False,
+                                       xref="paper", yref="paper",
+                                       x=0.005, y=-0.002 )],
                                    updatemenus= [{'type': 'buttons',
                                                   'buttons': [{'label': 'Play','method': 'animate','args': [None]}]
                                                   }],
@@ -319,11 +363,11 @@ if __name__ == '__main__':
               'max_distance': 0.08,
               'network_center': (0.5,0.5),
               'time_step': 0.1,
-              'max_steps': 100,
+              'max_steps': 1000,
               'messages': [{'id': 0, 'origin': 'center', 'length': 0.2}],  # length in seconds
               'node_config': {'delay_factor_constant': 1,
-                              'delay_factor_randomize': False,
-                              'delay_factor_min': 0.1,
+                              'delay_factor_randomize': True,
+                              'delay_factor_min': 0.2,
                               'delay_factor_max': 5.0,
                               },
               }
