@@ -331,7 +331,7 @@ class Visualizer():
                                        ),
                             )
 
-            py.iplot(fig, filename='networkx')
+            py.iplot(fig, filename='index.html')
 
     def play_movie(self):
         # Create the graph
@@ -355,7 +355,7 @@ class Visualizer():
                         frames=self.data,
                         )
 
-        py.plot(fig, filename='networkx')
+        py.plot(fig, filename='index.html')
 
 
 if __name__ == '__main__':
