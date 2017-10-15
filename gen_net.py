@@ -111,7 +111,8 @@ class NetSim():
         # Initialize time
         self.time = 0
 
-        self.movie = Movie()
+        # Instantiate a visualization object for the simulation
+        self.vis = Visualizer()
 
     def run_sim(self):
         # Begin tranmission on starting node
@@ -129,12 +130,12 @@ class NetSim():
             N = 1
             if ii % 1 == 0:
                 self.node_trace = draw_nodes(self.network)
-                self.movie.add_data(self.edge_trace, self.node_trace)
+                self.vis.add_data(self.edge_trace, self.node_trace)
 
         # Draw the nodes at the end of the simulation
         print("The simulation ended at t = {}".format(self.time))
         self.node_trace = draw_nodes(self.network)
-        self.movie.add_data(self.edge_trace, self.node_trace)
+        self.vis.add_data(self.edge_trace, self.node_trace)
 
     def __step_sim(self):
         # Iterate over all nodes and transmit
@@ -239,7 +240,7 @@ def draw_nodes(G):
     return node_trace
 
 
-class Movie():
+class Visualizer():
 
     def __init__(self):
         self.data = []
@@ -247,7 +248,28 @@ class Movie():
     def add_data(self, edge_trace, node_trace):
         self.data.append({'data': Data([edge_trace, node_trace])})
 
-    def play(self):
+    def view_stills(self):
+        for datum in self.data:
+            # Create the graph
+            fig = Figure(data=datum['data'],
+                         layout=Layout(title='<br>Network graph made with Python',
+                                       titlefont=dict(size=16),
+                                       showlegend=False,
+                                       hovermode='closest',
+                                       margin=dict(b=20,l=5,r=5,t=40),
+                                       # annotations=[ dict(
+                                       #     text="Python code: <a href='https://plot.ly/ipython-notebooks/network-graphs/'> https://plot.ly/ipython-notebooks/network-graphs/</a>",
+                                       #     showarrow=False,
+                                       #     xref="paper", yref="paper",
+                                       #     x=0.005, y=-0.002 ) ],
+                                       xaxis=XAxis(showgrid=False, zeroline=False, showticklabels=False),
+                                       yaxis=YAxis(showgrid=False, zeroline=False, showticklabels=False),
+                                       ),
+                            )
+
+            py.iplot(fig, filename='networkx')
+
+    def play_movie(self):
         # Create the graph
         fig = Figure(data=self.data[0]['data'],
                      layout=Layout(title='<br>Network graph made with Python',
@@ -275,6 +297,4 @@ class Movie():
 if __name__ == '__main__':
     sim = NetSim(200)
     sim.run_sim()
-    sim.movie.play()
-# for datum in sim.movie.data:
-#     print(datum)
+    sim.vis.view_stills()
