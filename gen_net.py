@@ -13,9 +13,10 @@ py.init_notebook_mode(connected=True)
 class State():
     STATES = ['rx','delay','tx','idle','fault']
 
-    def __init__(self):
+    def __init__(self, delay_factor_randomize):
         self.state = 'idle'
         self.delay_factor = 1
+        self.delay_factor_randomize = delay_factor_randomize
 
         # keep track of how many nodes are trying to talk to us
         self.active_message_count = 0
@@ -43,7 +44,7 @@ class State():
 
     def transmit(self, msg, neighbors, time_step=1):
         if self.state == 'tx' or (self.state == 'delay' and self.delay_timer <= 0):
-            self.set_delay_factor()
+            self.set_delay_factor(self.delay_factor_randomize)
             if self.tx_timer > 0:
                 for neighbor in neighbors:
                     neighbor.new_message()
@@ -75,7 +76,7 @@ class State():
                 elif self.active_message_count == 0: # this is a problem if consecutive messages but no overlap
                     if msg['id'] not in self.msg_history:
                         self.tx_timer = msg['length']
-                        self.set_delay_factor()
+                        self.set_delay_factor(self.delay_factor_randomize)
                         self.delay_timer = self.delay_factor*msg['length'] - time_step
                         self.msg_history.add(msg['id'])
                         next_state = 'delay'
@@ -94,8 +95,11 @@ class State():
                 # raise ValueError('At least one node is in an unexpected state.')
                 print('A node was in an unexpected state: {}'.format(self.state))
 
-    def set_delay_factor(self, msg=None, randomize=False):
-        self.delay_factor = 1
+    def set_delay_factor(self, randomize=None):
+        if randomize:
+            self.delay_factor = uniform(randomize['delay_factor_min'], randomize['delay_factor_max'])
+        else:
+            self.delay_factor = 1
 
 
 class NetSim():
@@ -107,10 +111,10 @@ class NetSim():
         self.max_steps = config['max_steps']
         self.message = config['messages'][0]
 
-        if config['delay_factor_randomize']:
-            self.delay_factor = uniform(config['delay_factor_min'], config['delay_factor_max'])
-        else:
-            self.delay_factor = config['delay_factor_constant']
+        # if config['delay_factor_randomize']:
+        #     self.delay_factor = uniform(config['delay_factor_min'], config['delay_factor_max'])
+        # else:
+        #     self.delay_factor = config['delay_factor_constant']
 
         # Create the graph
         self.network, self.starting_node = create_graph(self.time_step, config)
@@ -189,8 +193,9 @@ def create_graph(time_step, config):
             dmin=d
 
     # Add state attribute to each node TODO: add more parameters to State
+    delay_factor_randomize = config['delay_factor_randomize'] if config['delay_factor_randomize'] else None
     for node in G.nodes():
-        G.node[node]['state'] = State()
+        G.node[node]['state'] = State(delay_factor_randomize)
 
     return G, ncenter
 
@@ -309,16 +314,16 @@ class Visualizer():
 
 
 if __name__ == '__main__':
-    config = {'network_size': 200,
-              'max_distance': 0.125,
+    config = {'network_size': 400,
+              'max_distance': 0.08,
               'network_center': (0.5,0.5),
               'time_step': 0.1,
-              'max_steps': 50,
+              'max_steps': 100,
               'messages': [{'id': 0, 'origin': 'center', 'length': 0.2}],  # length in seconds
               'delay_factor_constant': 1,
-              'delay_factor_randomize': False,
-              'delay_factor_min': 0.1,
-              'delay_factor_max': 5.0,
+              'delay_factor_randomize': {'delay_factor_min': 0.1,
+                                         'delay_factor_max': 5.0,
+                                         },
               }
 
     sim = NetSim(config)
