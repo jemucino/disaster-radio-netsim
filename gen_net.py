@@ -1,4 +1,6 @@
 # Based on networkx example at https://plot.ly/python/network-graphs/
+from random import uniform
+
 # import plotly.plotly as py
 import plotly.offline as py
 from plotly.graph_objs import *
@@ -13,6 +15,7 @@ class State():
 
     def __init__(self):
         self.state = 'idle'
+        self.delay_factor = 1
 
         # keep track of how many nodes are trying to talk to us
         self.active_message_count = 0
@@ -35,11 +38,12 @@ class State():
     def tx_begin(self, msg, neighbors):
         if self.state == 'idle':
             self.msg_history.add(msg['id'])
-            self.tx_timer = .2 # TODO: this value should be calculated based on TBD
+            self.tx_timer = msg['length']
             self.state = 'tx'
 
     def transmit(self, msg, neighbors, time_step=1):
         if self.state == 'tx' or (self.state == 'delay' and self.delay_timer <= 0):
+            self.set_delay_factor()
             if self.tx_timer > 0:
                 for neighbor in neighbors:
                     neighbor.new_message()
@@ -61,8 +65,6 @@ class State():
                     # if multiple nodes are talking to us, the messages are lost
                     next_state = 'fault'
                 elif self.active_message_count == 1:
-                    self.delay_timer = .2 - time_step # TODO: this value should be calculated based on TBD
-                    self.tx_timer = .2 # TODO: this value should be calculated based on TBD
                     next_state = 'rx'
                 else:
                     next_state = 'idle'
@@ -72,6 +74,9 @@ class State():
                     next_state = 'fault'
                 elif self.active_message_count == 0: # this is a problem if consecutive messages but no overlap
                     if msg['id'] not in self.msg_history:
+                        self.tx_timer = msg['length']
+                        self.set_delay_factor()
+                        self.delay_timer = self.delay_factor*msg['length'] - time_step
                         self.msg_history.add(msg['id'])
                         next_state = 'delay'
                     else:
@@ -85,25 +90,30 @@ class State():
                     next_state = 'fault'
             elif self.state == 'delay' or self.state =='tx':
                 break
+            else:
+                # raise ValueError('At least one node is in an unexpected state.')
+                print('A node was in an unexpected state: {}'.format(self.state))
 
-        # else:
-        #     # raise ValueError('At least one node is in an unexpected state.')
-        #     print('A node was in an unexpected state: {}'.format(self.state))
+    def set_delay_factor(self, msg=None, randomize=False):
+        self.delay_factor = 1
 
 
 class NetSim():
 
-    def __init__(self, size):
+    def __init__(self, config):
         # Initialize simulation
         # TODO: make config file or dict
-        self.time_step = 0.1
-        self.max_steps = 20
-        self.message = {'id': 0}
-        self.message_length = .2 # seconds TODO: randomize or calculate
-        self.delay_factor = 1 # seconds TODO: randomize or calculate
+        self.time_step = config['time_step']
+        self.max_steps = config['max_steps']
+        self.message = config['messages'][0]
+
+        if config['delay_factor_randomize']:
+            self.delay_factor = uniform(config['delay_factor_min'], config['delay_factor_max'])
+        else:
+            self.delay_factor = config['delay_factor_constant']
 
         # Create the graph
-        self.network, self.starting_node = create_graph(self.time_step, size)
+        self.network, self.starting_node = create_graph(self.time_step, config)
 
         # # Map nodes to connected neighbors
         # self.neighbors = {node: [neighbor for neighbor in nx.all_neighbors(self.network,node)] for node in self.network.nodes()}
@@ -159,7 +169,11 @@ class NetSim():
         self.time += self.time_step
 
 
-def create_graph(time_step, size = 100, max_distance = 0.125, x0 = 0.5, y0 = 0.5):
+def create_graph(time_step, config):
+    size = config['network_size']
+    max_distance = config['max_distance']
+    x0, y0 = config['network_center']
+
     # Store position as node attribute data for random_geometric_graph
     G=nx.random_geometric_graph(size, max_distance)
     pos=nx.get_node_attributes(G,'pos')
@@ -295,6 +309,18 @@ class Visualizer():
 
 
 if __name__ == '__main__':
-    sim = NetSim(200)
+    config = {'network_size': 200,
+              'max_distance': 0.125,
+              'network_center': (0.5,0.5),
+              'time_step': 0.1,
+              'max_steps': 50,
+              'messages': [{'id': 0, 'origin': 'center', 'length': 0.2}],  # length in seconds
+              'delay_factor_constant': 1,
+              'delay_factor_randomize': False,
+              'delay_factor_min': 0.1,
+              'delay_factor_max': 5.0,
+              }
+
+    sim = NetSim(config)
     sim.run_sim()
-    sim.vis.view_stills()
+    sim.vis.play_movie()
